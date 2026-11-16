@@ -4,6 +4,9 @@
  */
 
 const nodemailer = require('nodemailer');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 require('dotenv').config();
 
 let transporter = null;
@@ -21,7 +24,6 @@ function getSmtpConfig() {
       pass: process.env.SMTP_PASS || ''
     },
     tls: {
-      // Do not fail on invalid certs for self-hosted or testing SMTP
       rejectUnauthorized: process.env.NODE_ENV === 'production'
     }
   };
@@ -51,13 +53,37 @@ async function verifySmtp() {
     return true;
   } catch (error) {
     console.error('[SMTP Error] Failed to verify SMTP connection:', error.message);
-    console.error('[SMTP Hint] For Gmail, use an App Password (16 letters) instead of your regular password. Verify SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS.');
+    console.error('[SMTP Hint] For Gmail, use an App Password (16 characters) created in Google Account Security.');
     return false;
   }
+}
+
+function getFromAddress() {
+  const fromEnv = process.env.SMTP_FROM;
+  const userEnv = process.env.SMTP_USER;
+
+  if (!fromEnv) {
+    return `"ENECTRON Enquiries" <${userEnv}>`;
+  }
+
+  if (fromEnv.includes('<') && fromEnv.includes('>')) {
+    return fromEnv;
+  }
+
+  // Handle format: "ENECTRON Enquiries" email@example.com
+  const match = fromEnv.match(/^(.*?)\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/);
+  if (match) {
+    const displayName = match[1].trim() || 'ENECTRON Enquiries';
+    const emailAddr = match[2].trim();
+    return `${displayName} <${emailAddr}>`;
+  }
+
+  return fromEnv;
 }
 
 module.exports = {
   getTransporter,
   verifySmtp,
-  getSmtpConfig
+  getSmtpConfig,
+  getFromAddress
 };

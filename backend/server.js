@@ -1,52 +1,48 @@
 /**
  * Backend Server Entry Point
- * Initializes Database, verifies SMTP, and starts HTTP server.
+ * Verifies SMTP connectivity and starts Express HTTP server serving both static frontend and API.
  */
 
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables (from backend/.env first, then root .env if present)
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config();
+
 const app = require('./src/app');
-const { initDatabase, closeDatabase } = require('./src/config/database');
 const { verifySmtp } = require('./src/config/smtp');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
-
 let server = null;
 
 async function startServer() {
   console.log('========================================================');
   console.log('🚀 Starting ENECTRON Enquiry Management Backend...');
   console.log(`[Environment] NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+  console.log(`[Email] Receiver configured: ${Boolean(process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL)}`);
   console.log('========================================================');
 
-  // 1. Initialize MySQL database connection & schema
-  const dbOk = await initDatabase();
-  if (!dbOk) {
-    console.warn('[Warning] Running with unverified or offline MySQL connection. Requests needing database will fail until credentials in .env are configured.');
-  }
-
-  // 2. Verify SMTP connection
+  // 1. Verify SMTP connection
   await verifySmtp();
 
-  // 3. Start Express HTTP Server
+  // 2. Start Express HTTP Server
   server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server is listening on http://0.0.0.0:${PORT}`);
-    console.log(`   Health check endpoint: http://localhost:${PORT}/api/health`);
-    console.log(`   Enquiries endpoint:    POST http://localhost:${PORT}/api/enquiries`);
+    console.log(`✅ Server is running on http://localhost:${PORT}`);
+    console.log(`   Website frontend:   http://localhost:${PORT}`);
+    console.log(`   Health check:       http://localhost:${PORT}/api/health`);
+    console.log(`   Enquiry endpoint:   POST http://localhost:${PORT}/api/enquiry`);
     console.log('========================================================');
   });
 }
 
 // Graceful shutdown handling
 function gracefulShutdown(signal) {
-  console.log(`\n[Shutdown] Received ${signal}. Closing HTTP server and database pool...`);
+  console.log(`\n[Shutdown] Received ${signal}. Closing HTTP server...`);
   if (server) {
-    server.close(async () => {
-      console.log('[Shutdown] HTTP server closed.');
-      try {
-        await closeDatabase();
-      } catch (err) {
-        console.error('[Shutdown Error] Failed to close database connection:', err.message);
-      }
+    server.close(() => {
+      console.log('[Shutdown] HTTP server closed gracefully.');
       process.exit(0);
     });
   } else {

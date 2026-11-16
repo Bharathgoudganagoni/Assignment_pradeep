@@ -1,19 +1,16 @@
 # ==============================================================================
-# Render Blueprint Specification for ENECTRON Full-Stack Enquiry System
+# Render Blueprint Specification for ENECTRON Enquiry Management System
+# Single Web Service hosting both static frontend and Node.js / Nodemailer API.
 # Docs: https://render.com/docs/blueprint-spec
 # ==============================================================================
 
 services:
-  # ----------------------------------------------------------------------------
-  # 1. Backend Web Service (Node.js / Express / MongoDB / Nodemailer)
-  # ----------------------------------------------------------------------------
   - type: web
-    name: enectron-backend
+    name: enectron-website
     runtime: node
     plan: free
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node server.js
+    buildCommand: npm install --prefix backend
+    startCommand: node backend/server.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -21,17 +18,11 @@ services:
       - key: PORT
         value: 10000
       - key: FRONTEND_URL
-        sync: false # Set to your deployed frontend URL (e.g. https://enectron-frontend.onrender.com)
-      
-      # Database Connection (MongoDB Atlas free cluster URI)
-      - key: MONGODB_URI
-        sync: false # e.g. mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/enectron_db?retryWrites=true&w=majority
-
-      # Nodemailer SMTP Configuration
+        value: "*"
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
-        value: 587
+        value: "587"
       - key: SMTP_SECURE
         value: "false"
       - key: SMTP_USER
@@ -39,22 +30,12 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: SMTP_FROM
-        value: "ENECTRON Enquiries <no-reply@enectron.com>"
+        sync: false
+      - key: RECEIVER_EMAIL
+        sync: false
       - key: OWNER_EMAIL
         sync: false
       - key: BUILDER_EMAIL
         sync: false
       - key: SEND_CUSTOMER_ACK
         value: "true"
-
-  # ----------------------------------------------------------------------------
-  # 2. Frontend Static Site (HTML / CSS / JavaScript)
-  # ----------------------------------------------------------------------------
-  - type: static
-    name: enectron-frontend
-    rootDir: frontend
-    publishDir: .
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

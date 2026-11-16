@@ -1,11 +1,10 @@
 /**
- * Enquiry Controller (MongoDB / Mongoose)
- * Handles enquiry validation, MongoDB persistence, and email triggering.
+ * Enquiry Controller
+ * Handles server-side input validation, sanitization, and direct SMTP email delivery.
+ * No database required.
  */
 
 const validator = require('validator');
-const Enquiry = require('../models/Enquiry');
-const { isDatabaseConnected } = require('../config/database');
 const { sendEnquiryEmail } = require('../services/emailService');
 
 /**
@@ -14,21 +13,21 @@ const { sendEnquiryEmail } = require('../services/emailService');
 function validateEnquiryPayload(body) {
   const errors = [];
 
-  const name = (body.name || body.user_name || '').trim();
+  const userName = (body.user_name || body.name || '').trim();
   const mobileNumber = (body.mobile_number || body.phone || '').trim();
-  const email = (body.email || body.user_email || '').trim();
+  const userEmail = (body.user_email || body.email || '').trim();
   const companyName = (body.company_name || body.company || '').trim();
-  const applicationUseCase = (body.application_use_case || body.application || body.use_case || '').trim();
+  const application = (body.application || body.application_use_case || body.use_case || '').trim();
   const requirement = (body.requirement || body.message || '').trim();
 
-  // Validate Name
-  if (!name) {
+  // 1. Validate User Name
+  if (!userName) {
     errors.push('Full name is required.');
-  } else if (name.length < 2 || name.length > 150) {
+  } else if (userName.length < 2 || userName.length > 150) {
     errors.push('Full name must be between 2 and 150 characters.');
   }
 
-  // Validate Mobile Number
+  // 2. Validate Mobile Number
   if (!mobileNumber) {
     errors.push('Mobile number is required.');
   } else {
@@ -38,21 +37,21 @@ function validateEnquiryPayload(body) {
     }
   }
 
-  // Validate Email
-  if (!email) {
+  // 3. Validate Email Address
+  if (!userEmail) {
     errors.push('Email address is required.');
-  } else if (!validator.isEmail(email)) {
+  } else if (!validator.isEmail(userEmail)) {
     errors.push('Please provide a valid email address.');
-  } else if (email.length > 191) {
+  } else if (userEmail.length > 191) {
     errors.push('Email address cannot exceed 191 characters.');
   }
 
-  // Length boundaries
+  // 4. Validate Optional Field Limits
   if (companyName && companyName.length > 150) {
     errors.push('Company name cannot exceed 150 characters.');
   }
 
-  if (applicationUseCase && applicationUseCase.length > 150) {
+  if (application && application.length > 150) {
     errors.push('Application / Use Case cannot exceed 150 characters.');
   }
 
@@ -64,19 +63,33 @@ function validateEnquiryPayload(body) {
     isValid: errors.length === 0,
     errors,
     sanitized: {
-      name,
-      mobileNumber,
-      email: email.toLowerCase(),
-      companyName: companyName || null,
-      applicationUseCase: applicationUseCase || null,
+      user_name: userName,
+      mobile_number: mobileNumber,
+      user_email: userEmail.toLowerCase(),
+      company_name: companyName || null,
+      application: application || null,
       requirement: requirement || null
     }
   };
 }
 
 /**
- * POST /api/enquiries
- * Creates enquiry in MongoDB and triggers SMTP email.
+ * Duplicate submission tracker in memory (cooldown: 5 seconds per email/phone combination)
+ */
+const recentSubmissions = new Map();
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamp] of recentSubmissions.entries()) {
+    if (now - timestamp > 60000) { // Clean up after 1 minute
+      recentSubmissions.delete(key);
+    }
+  }
+}, 30000);
+if (cleanupInterval.unref) cleanupInterval.unref();
+
+/**
+ * POST /api/enquiry
+ * Accepts form data, validates, and dispatches email directly via Gmail SMTP.
  */
 async function createEnquiry(req, res, next) {
   try {
@@ -90,113 +103,44 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    const ipAddress = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim().slice(0, 45);
-    const userAgent = (req.headers['user-agent'] || '').slice(0, 255);
+    // Duplicate submission check within 5 seconds
+    const submissionKey = `${sanitized.user_email}:${sanitized.mobile_number}`;
+    const lastSubmission = recentSubmissions.get(submissionKey);
+    const now = Date.now();
+    if (lastSubmission && now - lastSubmission < 5000) {
+      return res.status(429).json({
+        success: false,
+        message: 'A submission is already processing. Please wait a moment.'
+      });
+    }
+    recentSubmissions.set(submissionKey, now);
 
-    // 1. Save enquiry to MongoDB FIRST
-    const enquiryDoc = await Enquiry.create({
-      name: sanitized.name,
-      mobile_number: sanitized.mobileNumber,
-      email: sanitized.email,
-      company_name: sanitized.companyName,
-      application_use_case: sanitized.applicationUseCase,
-      requirement: sanitized.requirement,
-      email_status: 'PENDING',
-      ip_address: ipAddress,
-      user_agent: userAgent
-    });
+    console.log(`[Enquiry] Processing enquiry from: ${sanitized.user_name} (${sanitized.user_email})`);
 
-    console.log(`[Enquiry] Successfully saved enquiry to MongoDB: ID ${enquiryDoc._id} for ${sanitized.email}`);
+    // Dispatch email via Nodemailer
+    const emailResult = await sendEnquiryEmail(sanitized);
 
-    // Build saved enquiry object for email service
-    const savedEnquiry = {
-      id: enquiryDoc._id.toString(),
-      name: enquiryDoc.name,
-      mobile_number: enquiryDoc.mobile_number,
-      email: enquiryDoc.email,
-      company_name: enquiryDoc.company_name,
-      application_use_case: enquiryDoc.application_use_case,
-      requirement: enquiryDoc.requirement,
-      created_at: enquiryDoc.createdAt
-    };
-
-    // 2. Trigger SMTP email delivery
-    let emailStatus = 'PENDING';
-    let emailErrorMsg = null;
-
-    try {
-      const emailResult = await sendEnquiryEmail(savedEnquiry);
-      if (emailResult.success) {
-        emailStatus = 'SENT';
-      } else {
-        emailStatus = 'FAILED';
-        emailErrorMsg = emailResult.error || 'Email dispatch failed';
-      }
-    } catch (err) {
-      emailStatus = 'FAILED';
-      emailErrorMsg = err.message;
-      console.error(`[Enquiry Error] Email delivery threw exception for enquiry ${enquiryDoc._id}:`, err);
+    if (!emailResult.success) {
+      console.error('[Enquiry Error] Failed to send email via SMTP:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to deliver enquiry email via SMTP. Please try again later or contact us directly.'
+      });
     }
 
-    // 3. Update email status in MongoDB
-    enquiryDoc.email_status = emailStatus;
-    enquiryDoc.email_error = emailErrorMsg;
-    await enquiryDoc.save().catch(e => console.warn('[Enquiry Warning] Failed to update email_status:', e.message));
-
-    // 4. Return success response
-    return res.status(201).json({
+    // Success response
+    return res.status(200).json({
       success: true,
-      message: 'Thank you! Your enquiry has been received and saved successfully.',
+      message: 'Thank you! Your enquiry has been received and our team will get in touch with you shortly.',
       data: {
-        enquiryId: enquiryDoc._id,
-        emailStatus,
-        customerName: sanitized.name
+        customerName: sanitized.user_name,
+        email: sanitized.user_email,
+        delivered: true
       }
     });
 
   } catch (error) {
-    console.error('[Enquiry Controller Error]', error);
-    next(error);
-  }
-}
-
-/**
- * POST /api/enquiries/:id/retry-email
- * Re-attempts email notification for a saved MongoDB enquiry.
- */
-async function retryEnquiryEmail(req, res, next) {
-  try {
-    const enquiryId = req.params.id;
-    const enquiry = await Enquiry.findById(enquiryId);
-
-    if (!enquiry) {
-      return res.status(404).json({ success: false, message: 'Enquiry not found.' });
-    }
-
-    const emailPayload = {
-      id: enquiry._id.toString(),
-      name: enquiry.name,
-      mobile_number: enquiry.mobile_number,
-      email: enquiry.email,
-      company_name: enquiry.company_name,
-      application_use_case: enquiry.application_use_case,
-      requirement: enquiry.requirement
-    };
-
-    const emailResult = await sendEnquiryEmail(emailPayload);
-
-    enquiry.email_status = emailResult.success ? 'SENT' : 'FAILED';
-    enquiry.email_error = emailResult.success ? null : emailResult.error;
-    await enquiry.save();
-
-    return res.json({
-      success: emailResult.success,
-      message: emailResult.success ? 'Email retry sent successfully.' : 'Email retry failed.',
-      status: enquiry.email_status,
-      error: enquiry.email_error
-    });
-
-  } catch (error) {
+    console.error('[Enquiry Controller Unhandled Error]', error);
     next(error);
   }
 }
@@ -205,26 +149,24 @@ async function retryEnquiryEmail(req, res, next) {
  * GET /api/health
  */
 async function getHealth(req, res) {
-  const dbConnected = isDatabaseConnected();
+  const isSmtpConfigured = Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  const receiverEmail = process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL || 'Not configured';
 
-  res.status(dbConnected ? 200 : 503).json({
-    status: dbConnected ? 'healthy' : 'degraded',
+  res.status(200).json({
+    status: 'healthy',
     service: 'ENECTRON Enquiry Management API',
-    databaseType: 'MongoDB',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
-    database: {
-      connected: dbConnected
-    },
     smtp: {
-      configured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
-      host: process.env.SMTP_HOST || 'Not set'
+      configured: isSmtpConfigured,
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      receiverConfigured: receiverEmail !== 'Not configured'
     }
   });
 }
 
 module.exports = {
   createEnquiry,
-  retryEnquiryEmail,
-  getHealth
+  getHealth,
+  validateEnquiryPayload
 };

@@ -5,25 +5,32 @@
  * 
  *  Preserves 100% of the existing website design, animations, phone formatting,
  *  and top pop-up notification toast while connecting seamlessly to the
- *  Node.js / Express backend API (POST /api/enquiries).
+ *  Node.js / Express backend API (POST /api/enquiry).
  */
 
 // =========================================================================
-// 🌐 BACKEND API URL RESOLVER
+// 🌐 BACKEND API ENDPOINT RESOLVER
 // =========================================================================
-function getApiBaseUrl() {
-  // 1. Check if configured in config.js or window object
+function getApiEndpoint() {
+  // 1. Explicit override via window.ENV_API_URL if configured
   if (typeof window.ENV_API_URL === 'string' && window.ENV_API_URL.trim() !== '') {
-    return window.ENV_API_URL.trim().replace(/\/+$/, '');
+    return window.ENV_API_URL.trim().replace(/\/+$/, '') + '/api/enquiry';
   }
 
-  // 2. Default to localhost backend if running locally in development
+  // 2. When running on a separate local dev server (e.g. Live Server on 3000 / 5500)
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'http://localhost:5000';
+    if (window.location.port !== '5000') {
+      return 'http://localhost:5000/api/enquiry';
+    }
   }
 
-  // 3. Otherwise relative URL (for same-origin or reverse proxy on Render)
-  return '';
+  // 3. Fallback when opened directly via file:// protocol
+  if (window.location.protocol === 'file:') {
+    return 'http://localhost:5000/api/enquiry';
+  }
+
+  // 4. Default relative URL when served directly by Express (single-server local or Render)
+  return '/api/enquiry';
 }
 
 // =========================================================================
@@ -54,7 +61,7 @@ class TopNotificationManager {
   initEvents() {
     this.closeBtn.addEventListener("click", () => this.hide());
 
-    // Pause on hover so the user can easily read the message
+    // Pause countdown on hover so user can easily read message
     this.toast.addEventListener("mouseenter", () => {
       this.paused = true;
       if (this.progressBar) {
@@ -175,7 +182,7 @@ class TopNotificationManager {
         osc.stop(now + 0.3);
       }
     } catch (e) {
-      // Audio autoplay restrictions; ignore gracefully
+      // Audio autoplay restrictions; fail silently
     }
   }
 }
@@ -209,7 +216,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 📱 SMART MOBILE NUMBER FORMATTING & STRICT DIGIT LIMITS
   // =========================================================================
   const DEFAULT_COUNTRY_CODE = "+91";
-  const DEFAULT_MAX_DIGITS = 10; // Exactly 10 digits for +91 (India)
+  const DEFAULT_MAX_DIGITS = 10; // Exactly 10 digits for India
 
   function getCountryDetails(val) {
     if (val.startsWith("+1")) return { code: "+1", maxDigits: 10 };
@@ -230,7 +237,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       afterCode = rawVal.replace(/^\+91/, "").replace(/^\+/, "");
     }
-    // Only digits, strictly up to maxDigits - NO extra numbers allowed!
+    // Only digits, strictly up to maxDigits
     return {
       code,
       maxDigits,
@@ -364,7 +371,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // =========================================================================
-  // 🚀 SUBMIT HANDLER (CONNECTS TO BACKEND POST /api/enquiries)
+  // 🚀 SUBMIT HANDLER (CONNECTS TO BACKEND POST /api/enquiry)
   // =========================================================================
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -396,15 +403,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Payload matching backend API schema
     const payload = {
-      name: nameInput.value.trim(),
+      user_name: nameInput.value.trim(),
       mobile_number: formattedPhone,
-      email: emailInput.value.trim(),
+      user_email: emailInput.value.trim(),
       company_name: companyInput.value.trim() || null,
-      application_use_case: applicationSelect.value || null,
+      application: applicationSelect.value || null,
       requirement: requirementTextarea.value.trim() || null
     };
 
-    const targetUrl = `${getApiBaseUrl()}/api/enquiries`;
+    const targetUrl = getApiEndpoint();
 
     try {
       // 3. Send to Node.js backend using fetch API
@@ -420,7 +427,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        // Extract server error message or validation errors
         let errorMsg = "Unable to process your enquiry. Please try again.";
         if (data && data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
           errorMsg = data.errors.join(" ");
@@ -436,10 +442,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // 4. Success Response Handling
       setLoadingState(false);
 
-      const customerName = payload.name;
+      const customerName = payload.user_name;
       toastManager.show({
         title: "Enquiry Submitted Successfully!",
-        message: `Thank you, ${customerName}! Your enquiry has been received and saved. Our team will connect with you shortly.`,
+        message: `Thank you, ${customerName}! Your enquiry has been received. Our team will connect with you shortly.`,
         type: "success",
         duration: 5500
       });

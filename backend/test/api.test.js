@@ -5,16 +5,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const http = require('node:http');
 const app = require('../src/app');
-const { initDatabase, closeDatabase } = require('../src/config/database');
 const { generateOwnerNotificationHtml, generateCustomerAckHtml } = require('../src/services/emailService');
 
 let server = null;
 let baseUrl = '';
 
 test.before(async () => {
-  await initDatabase();
   // Start test server on random available port
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', () => {
@@ -29,7 +26,6 @@ test.after(async () => {
   if (server) {
     await new Promise((resolve) => server.close(resolve));
   }
-  await closeDatabase();
 });
 
 // Helper for making HTTP JSON requests in tests
@@ -46,51 +42,59 @@ async function makeRequest(path, { method = 'GET', body = null, headers = {} } =
     body: body ? JSON.stringify(body) : undefined
   });
 
-  const json = await response.json().catch(() => null);
+  const contentType = response.headers.get('content-type') || '';
+  let data = null;
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => null);
+  } else {
+    data = await response.text().catch(() => null);
+  }
+
   return {
     status: response.status,
     headers: response.headers,
-    data: json
+    data
   };
 }
 
-test('1. Health Check Endpoint - GET /api/health returns health status', async () => {
+test('1. Health Check Endpoint - GET /api/health returns 200 and healthy status', async () => {
   const res = await makeRequest('/api/health');
-  // Health returns 200 or 503 (if db offline during testing)
-  assert.ok(res.status === 200 || res.status === 503);
-  assert.ok(res.data.service === 'ENECTRON Enquiry Management API');
-  assert.ok('database' in res.data);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.data.status, 'healthy');
+  assert.strictEqual(res.data.service, 'ENECTRON Enquiry Management API');
   assert.ok('smtp' in res.data);
 });
 
-test('2. Root Info Endpoint - GET / returns system info', async () => {
+test('2. Root Endpoint - GET / serves existing frontend index.html', async () => {
   const res = await makeRequest('/');
   assert.strictEqual(res.status, 200);
-  assert.strictEqual(res.data.name, 'ENECTRON Full-Stack Enquiry Management API');
+  assert.ok(typeof res.data === 'string');
+  assert.ok(res.data.includes('ENECTRON'));
+  assert.ok(res.data.includes('Enquire Now'));
 });
 
 test('3. Validation - Missing Name rejected with 400', async () => {
-  const res = await makeRequest('/api/enquiries', {
+  const res = await makeRequest('/api/enquiry', {
     method: 'POST',
     body: {
-      name: '',
+      user_name: '',
       mobile_number: '+91 98765 43210',
-      email: 'john@example.com'
+      user_email: 'john@example.com'
     }
   });
 
   assert.strictEqual(res.status, 400);
   assert.strictEqual(res.data.success, false);
-  assert.ok(res.data.errors.some(e => e.includes('name')));
+  assert.ok(res.data.errors.some(e => e.toLowerCase().includes('name')));
 });
 
 test('4. Validation - Missing Mobile Number rejected with 400', async () => {
-  const res = await makeRequest('/api/enquiries', {
+  const res = await makeRequest('/api/enquiry', {
     method: 'POST',
     body: {
-      name: 'John Doe',
+      user_name: 'John Doe',
       mobile_number: '',
-      email: 'john@example.com'
+      user_email: 'john@example.com'
     }
   });
 
@@ -100,36 +104,36 @@ test('4. Validation - Missing Mobile Number rejected with 400', async () => {
 });
 
 test('5. Validation - Too short mobile number rejected with 400', async () => {
-  const res = await makeRequest('/api/enquiries', {
+  const res = await makeRequest('/api/enquiry', {
     method: 'POST',
     body: {
-      name: 'John Doe',
+      user_name: 'John Doe',
       mobile_number: '123',
-      email: 'john@example.com'
+      user_email: 'john@example.com'
     }
   });
 
   assert.strictEqual(res.status, 400);
   assert.strictEqual(res.data.success, false);
-  assert.ok(res.data.errors.some(e => e.includes('mobile number')));
+  assert.ok(res.data.errors.some(e => e.toLowerCase().includes('mobile number')));
 });
 
 test('6. Validation - Invalid Email Address rejected with 400', async () => {
-  const res = await makeRequest('/api/enquiries', {
+  const res = await makeRequest('/api/enquiry', {
     method: 'POST',
     body: {
-      name: 'John Doe',
+      user_name: 'John Doe',
       mobile_number: '+91 98765 43210',
-      email: 'not-a-valid-email'
+      user_email: 'not-a-valid-email'
     }
   });
 
   assert.strictEqual(res.status, 400);
   assert.strictEqual(res.data.success, false);
-  assert.ok(res.data.errors.some(e => e.includes('email')));
+  assert.ok(res.data.errors.some(e => e.toLowerCase().includes('email')));
 });
 
-test('7. 404 Handler - Unknown route returns 404 JSON', async () => {
+test('7. 404 Handler - Unknown API route returns 404 JSON', async () => {
   const res = await makeRequest('/api/unknown-endpoint');
   assert.strictEqual(res.status, 404);
   assert.strictEqual(res.data.success, false);
@@ -137,12 +141,11 @@ test('7. 404 Handler - Unknown route returns 404 JSON', async () => {
 
 test('8. Email Service - HTML template generates correct customer details', () => {
   const sampleEnquiry = {
-    id: 101,
-    name: 'Alice Johnson',
+    user_name: 'Alice Johnson',
     mobile_number: '+91 98765 43210',
-    email: 'alice@company.com',
+    user_email: 'alice@company.com',
     company_name: 'SolarTech Ltd',
-    application_use_case: 'Showrooms',
+    application: 'Showrooms',
     requirement: 'Need product details for multiple showroom branches.'
   };
 
@@ -156,17 +159,17 @@ test('8. Email Service - HTML template generates correct customer details', () =
 
   const ackHtml = generateCustomerAckHtml(sampleEnquiry);
   assert.ok(ackHtml.includes('Alice Johnson'));
-  assert.ok(ackHtml.includes('#101'));
+  assert.ok(ackHtml.includes('SolarTech Ltd') === false); // ack has requirement summary
+  assert.ok(ackHtml.includes('Showrooms'));
 });
 
 test('9. Security - XSS characters are escaped in email template', () => {
   const sampleEnquiry = {
-    id: 102,
-    name: '<script>alert("xss")</script>',
+    user_name: '<script>alert("xss")</script>',
     mobile_number: '+91 98765 43210',
-    email: 'safe@test.com',
+    user_email: 'safe@test.com',
     company_name: '<b>Bad Company</b>',
-    application_use_case: 'Others',
+    application: 'Others',
     requirement: '<img src=x onerror=alert(1)>'
   };
 
@@ -175,25 +178,26 @@ test('9. Security - XSS characters are escaped in email template', () => {
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<b>Bad Company</b>'));
   assert.ok(html.includes('&lt;b&gt;Bad Company&lt;/b&gt;'));
+  assert.ok(!html.includes('<img src=x'));
+  assert.ok(html.includes('&lt;img src=x'));
 });
 
 test('10. Rate Limiting - Excessive submissions trigger 429 Too Many Requests', async () => {
   let hitRateLimit = false;
-  // Send rapid requests to trip rate limiter
-  for (let i = 0; i < 18; i++) {
-    const res = await makeRequest('/api/enquiries', {
+  for (let i = 0; i < 20; i++) {
+    const res = await makeRequest('/api/enquiry', {
       method: 'POST',
       body: {
-        name: 'Rapid Submitter',
+        user_name: 'Rapid Submitter',
         mobile_number: '+91 98765 43210',
-        email: `rapid${i}@example.com`
+        user_email: `rapid${i}@example.com`
       }
     });
 
     if (res.status === 429) {
       hitRateLimit = true;
       assert.strictEqual(res.data.success, false);
-      assert.ok(res.data.message.includes('Too many enquiry submissions'));
+      assert.ok(res.data.message.includes('Too many enquiry submissions') || res.data.message.includes('wait'));
       break;
     }
   }

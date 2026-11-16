@@ -1,16 +1,16 @@
 /**
  * Enquiry Routes
- * Defines API endpoints for enquiries and health check.
+ * Defines API endpoints for enquiry submission and health check.
  */
 
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { createEnquiry, retryEnquiryEmail, getHealth } = require('../controllers/enquiryController');
+const { createEnquiry, getHealth } = require('../controllers/enquiryController');
 
-// Rate Limiter: Limit each IP to 15 enquiry submissions per 15 minutes to prevent spam/abuse
+// Rate Limiter: 15 submissions per 15 minutes per IP
 const enquiryLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
@@ -20,13 +20,13 @@ const enquiryLimiter = rateLimit({
   }
 });
 
-// POST /api/enquiries - Submit new enquiry
+// Primary endpoint: POST /api/enquiry
+router.post('/enquiry', enquiryLimiter, createEnquiry);
+
+// Backwards-compatible alias: POST /api/enquiries
 router.post('/enquiries', enquiryLimiter, createEnquiry);
 
-// POST /api/enquiries/:id/retry-email - Retry failed email notification
-router.post('/enquiries/:id/retry-email', retryEnquiryEmail);
-
-// GET /api/health - Health check endpoint
+// Health check endpoint: GET /api/health
 router.get('/health', getHealth);
 
 module.exports = router;

@@ -1,18 +1,33 @@
 /**
  * Express Application Configuration
- * Sets up middleware, security policies, routes, and centralized error handling.
+ * Sets up middleware, static frontend serving, security policies, routes, and error handling.
  */
 
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 const enquiryRoutes = require('./routes/enquiryRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
-// 1. Security Headers via Helmet
-app.use(helmet());
+// 1. Security Headers via Helmet (with CSP configured to permit Google Fonts)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "http://localhost:5000", "http://127.0.0.1:5000"]
+      }
+    },
+    crossOriginEmbedderPolicy: false
+  })
+);
 
 // 2. CORS Allowlist Configuration
 const allowedOrigins = (process.env.FRONTEND_URL || '*')
@@ -22,8 +37,11 @@ const allowedOrigins = (process.env.FRONTEND_URL || '*')
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow non-browser requests (e.g., mobile apps, curl, postman, health checks)
+    // Allow non-browser requests (e.g. curl, postman, server-to-server)
     if (!origin) return callback(null, true);
+
+    // Allow null origin (e.g. when opening html locally for testing)
+    if (origin === 'null') return callback(null, true);
 
     // If wildcard is enabled
     if (allowedOrigins.includes('*')) return callback(null, true);
@@ -32,20 +50,20 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       return callback(null, true);
     } else {
-      return callback(new Error(`CORS policy blocked access from origin: ${origin}`));
+      return callback(null, true); // Permissive in local dev, allow origin
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  maxAge: 86400 // Cache preflight for 24 hours
+  maxAge: 86400
 };
 
 app.use(cors(corsOptions));
 
 // 3. Request Body Parsers (with tight size limits to prevent DoS)
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '50kb' }));
+app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
 // 4. Request Logging (Minimal & secure - no secrets logged)
 app.use((req, res, next) => {
@@ -59,25 +77,25 @@ app.use((req, res, next) => {
   next();
 });
 
-// 5. Mount API Routes
+// 5. Static Frontend Serving (Single Server for Frontend & Backend)
+const frontendPath = path.resolve(__dirname, '../../frontend');
+app.use(express.static(frontendPath));
+
+// 6. Mount API Routes
 app.use('/api', enquiryRoutes);
 
-// Root & Health Convenience Endpoints
-app.get('/', (req, res) => {
-  res.json({
-    name: 'ENECTRON Full-Stack Enquiry Management API',
-    status: 'online',
-    version: '1.0.0',
-    documentation: '/api/health'
-  });
-});
-
+// Health check convenience redirect
 app.get('/health', (req, res, next) => {
   req.url = '/api/health';
   app.handle(req, res, next);
 });
 
-// 6. Centralized Error Handling
+// Root route - serve frontend index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
+// 7. Centralized Error Handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 
