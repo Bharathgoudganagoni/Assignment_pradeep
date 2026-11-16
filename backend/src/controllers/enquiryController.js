@@ -1,10 +1,11 @@
 /**
- * Enquiry Controller
- * Handles enquiry validation, database persistence, and email triggering.
+ * Enquiry Controller (MongoDB / Mongoose)
+ * Handles enquiry validation, MongoDB persistence, and email triggering.
  */
 
 const validator = require('validator');
-const { getPool } = require('../config/database');
+const Enquiry = require('../models/Enquiry');
+const { isDatabaseConnected } = require('../config/database');
 const { sendEnquiryEmail } = require('../services/emailService');
 
 /**
@@ -13,7 +14,6 @@ const { sendEnquiryEmail } = require('../services/emailService');
 function validateEnquiryPayload(body) {
   const errors = [];
 
-  // Normalize field names (support both snake_case and camelCase from frontend)
   const name = (body.name || body.user_name || '').trim();
   const mobileNumber = (body.mobile_number || body.phone || '').trim();
   const email = (body.email || body.user_email || '').trim();
@@ -32,7 +32,6 @@ function validateEnquiryPayload(body) {
   if (!mobileNumber) {
     errors.push('Mobile number is required.');
   } else {
-    // Strip country code and spaces to verify digit count
     const digitsOnly = mobileNumber.replace(/\D/g, '');
     if (digitsOnly.length < 8 || digitsOnly.length > 15) {
       errors.push('Please provide a valid mobile number with at least 8 to 15 digits.');
@@ -48,7 +47,7 @@ function validateEnquiryPayload(body) {
     errors.push('Email address cannot exceed 191 characters.');
   }
 
-  // Length boundaries on optional fields
+  // Length boundaries
   if (companyName && companyName.length > 150) {
     errors.push('Company name cannot exceed 150 characters.');
   }
@@ -77,7 +76,7 @@ function validateEnquiryPayload(body) {
 
 /**
  * POST /api/enquiries
- * Creates a new enquiry, persists to MySQL, and triggers SMTP email.
+ * Creates enquiry in MongoDB and triggers SMTP email.
  */
 async function createEnquiry(req, res, next) {
   try {
@@ -91,49 +90,34 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    const pool = getPool();
     const ipAddress = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim().slice(0, 45);
     const userAgent = (req.headers['user-agent'] || '').slice(0, 255);
 
-    // 1. Save enquiry to MySQL database FIRST (parameterized query)
-    const insertQuery = `
-      INSERT INTO enquiries (
-        name, 
-        mobile_number, 
-        email, 
-        company_name, 
-        application_use_case, 
-        requirement, 
-        email_status, 
-        ip_address, 
-        user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
-    `;
-
-    const [result] = await pool.execute(insertQuery, [
-      sanitized.name,
-      sanitized.mobileNumber,
-      sanitized.email,
-      sanitized.companyName,
-      sanitized.applicationUseCase,
-      sanitized.requirement,
-      ipAddress,
-      userAgent
-    ]);
-
-    const enquiryId = result.insertId;
-    console.log(`[Enquiry] Successfully saved enquiry #${enquiryId} to MySQL for ${sanitized.email}`);
-
-    // Build saved enquiry object
-    const savedEnquiry = {
-      id: enquiryId,
+    // 1. Save enquiry to MongoDB FIRST
+    const enquiryDoc = await Enquiry.create({
       name: sanitized.name,
       mobile_number: sanitized.mobileNumber,
       email: sanitized.email,
       company_name: sanitized.companyName,
       application_use_case: sanitized.applicationUseCase,
       requirement: sanitized.requirement,
-      created_at: new Date()
+      email_status: 'PENDING',
+      ip_address: ipAddress,
+      user_agent: userAgent
+    });
+
+    console.log(`[Enquiry] Successfully saved enquiry to MongoDB: ID ${enquiryDoc._id} for ${sanitized.email}`);
+
+    // Build saved enquiry object for email service
+    const savedEnquiry = {
+      id: enquiryDoc._id.toString(),
+      name: enquiryDoc.name,
+      mobile_number: enquiryDoc.mobile_number,
+      email: enquiryDoc.email,
+      company_name: enquiryDoc.company_name,
+      application_use_case: enquiryDoc.application_use_case,
+      requirement: enquiryDoc.requirement,
+      created_at: enquiryDoc.createdAt
     };
 
     // 2. Trigger SMTP email delivery
@@ -151,26 +135,20 @@ async function createEnquiry(req, res, next) {
     } catch (err) {
       emailStatus = 'FAILED';
       emailErrorMsg = err.message;
-      console.error(`[Enquiry Error] Email delivery threw exception for enquiry #${enquiryId}:`, err);
+      console.error(`[Enquiry Error] Email delivery threw exception for enquiry ${enquiryDoc._id}:`, err);
     }
 
-    // 3. Update email status in database
-    try {
-      await pool.execute(
-        `UPDATE enquiries SET email_status = ?, email_error = ? WHERE id = ?`,
-        [emailStatus, emailErrorMsg, enquiryId]
-      );
-    } catch (dbUpdateError) {
-      console.warn(`[Enquiry Warning] Could not update email_status for enquiry #${enquiryId}:`, dbUpdateError.message);
-    }
+    // 3. Update email status in MongoDB
+    enquiryDoc.email_status = emailStatus;
+    enquiryDoc.email_error = emailErrorMsg;
+    await enquiryDoc.save().catch(e => console.warn('[Enquiry Warning] Failed to update email_status:', e.message));
 
-    // 4. Return success response to frontend
-    // The enquiry was saved in the database, so the submission is successful
+    // 4. Return success response
     return res.status(201).json({
       success: true,
       message: 'Thank you! Your enquiry has been received and saved successfully.',
       data: {
-        enquiryId,
+        enquiryId: enquiryDoc._id,
         emailStatus,
         customerName: sanitized.name
       }
@@ -184,41 +162,38 @@ async function createEnquiry(req, res, next) {
 
 /**
  * POST /api/enquiries/:id/retry-email
- * Re-attempts email notification for a saved enquiry whose email delivery previously failed.
+ * Re-attempts email notification for a saved MongoDB enquiry.
  */
 async function retryEnquiryEmail(req, res, next) {
   try {
-    const enquiryId = parseInt(req.params.id, 10);
-    if (isNaN(enquiryId)) {
-      return res.status(400).json({ success: false, message: 'Invalid enquiry ID.' });
-    }
+    const enquiryId = req.params.id;
+    const enquiry = await Enquiry.findById(enquiryId);
 
-    const pool = getPool();
-    const [rows] = await pool.execute(
-      'SELECT id, name, mobile_number, email, company_name, application_use_case, requirement, email_status FROM enquiries WHERE id = ?',
-      [enquiryId]
-    );
-
-    if (rows.length === 0) {
+    if (!enquiry) {
       return res.status(404).json({ success: false, message: 'Enquiry not found.' });
     }
 
-    const enquiry = rows[0];
-    const emailResult = await sendEnquiryEmail(enquiry);
+    const emailPayload = {
+      id: enquiry._id.toString(),
+      name: enquiry.name,
+      mobile_number: enquiry.mobile_number,
+      email: enquiry.email,
+      company_name: enquiry.company_name,
+      application_use_case: enquiry.application_use_case,
+      requirement: enquiry.requirement
+    };
 
-    const newStatus = emailResult.success ? 'SENT' : 'FAILED';
-    const errorMsg = emailResult.success ? null : emailResult.error;
+    const emailResult = await sendEnquiryEmail(emailPayload);
 
-    await pool.execute(
-      'UPDATE enquiries SET email_status = ?, email_error = ? WHERE id = ?',
-      [newStatus, errorMsg, enquiryId]
-    );
+    enquiry.email_status = emailResult.success ? 'SENT' : 'FAILED';
+    enquiry.email_error = emailResult.success ? null : emailResult.error;
+    await enquiry.save();
 
     return res.json({
       success: emailResult.success,
       message: emailResult.success ? 'Email retry sent successfully.' : 'Email retry failed.',
-      status: newStatus,
-      error: errorMsg
+      status: enquiry.email_status,
+      error: enquiry.email_error
     });
 
   } catch (error) {
@@ -228,31 +203,18 @@ async function retryEnquiryEmail(req, res, next) {
 
 /**
  * GET /api/health
- * System health check for Render, uptime monitors, and monitoring dashboards.
  */
 async function getHealth(req, res) {
-  let dbConnected = false;
-  let dbError = null;
+  const dbConnected = isDatabaseConnected();
 
-  try {
-    const pool = getPool();
-    const [rows] = await pool.query('SELECT 1 AS alive');
-    dbConnected = rows && rows[0] && rows[0].alive === 1;
-  } catch (err) {
-    dbConnected = false;
-    dbError = err.message;
-  }
-
-  const isHealthy = dbConnected;
-
-  res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? 'healthy' : 'degraded',
+  res.status(dbConnected ? 200 : 503).json({
+    status: dbConnected ? 'healthy' : 'degraded',
     service: 'ENECTRON Enquiry Management API',
+    databaseType: 'MongoDB',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     database: {
-      connected: dbConnected,
-      ...(dbError && { error: dbError })
+      connected: dbConnected
     },
     smtp: {
       configured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),

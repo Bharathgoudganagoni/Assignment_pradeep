@@ -5,7 +5,7 @@
 
 require('dotenv').config();
 const app = require('./src/app');
-const { initDatabase, getPool } = require('./src/config/database');
+const { initDatabase, closeDatabase } = require('./src/config/database');
 const { verifySmtp } = require('./src/config/smtp');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
@@ -43,11 +43,9 @@ function gracefulShutdown(signal) {
     server.close(async () => {
       console.log('[Shutdown] HTTP server closed.');
       try {
-        const pool = getPool();
-        await pool.end();
-        console.log('[Shutdown] MySQL pool closed.');
+        await closeDatabase();
       } catch (err) {
-        console.error('[Shutdown Error] Failed to close MySQL pool:', err.message);
+        console.error('[Shutdown Error] Failed to close database connection:', err.message);
       }
       process.exit(0);
     });

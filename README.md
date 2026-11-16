@@ -1,6 +1,6 @@
 # ENECTRON – Full-Stack Enquiry Management System
 
-A robust, enterprise-grade, reusable full-stack enquiry management system built with **Node.js, Express, MySQL, and Nodemailer**, preserving 100% of the original **ENECTRON** website design, branding, and user experience.
+A robust, enterprise-grade, reusable full-stack enquiry management system built with **Node.js, Express, MongoDB (Mongoose), and Nodemailer**, preserving 100% of the original **ENECTRON** website design, branding, and user experience.
 
 ---
 
@@ -18,8 +18,10 @@ ENECTRON/
 ├── backend/                      # Production-ready Node.js & Express REST API
 │   ├── src/
 │   │   ├── config/
-│   │   │   ├── database.js       # MySQL connection pool (mysql2/promise with SSL support)
+│   │   │   ├── database.js       # MongoDB connection manager (Mongoose)
 │   │   │   └── smtp.js           # Authenticated SMTP transporter setup
+│   │   ├── models/
+│   │   │   └── Enquiry.js        # Mongoose Enquiry schema with validation & indexes
 │   │   ├── controllers/
 │   │   │   └── enquiryController.js # Validation, DB persistence & email orchestration
 │   │   ├── routes/
@@ -32,7 +34,6 @@ ENECTRON/
 │   ├── test/
 │   │   └── api.test.js           # Automated test suite (native Node.js test runner)
 │   ├── server.js                 # Server entry point & graceful shutdown
-│   ├── schema.sql                # Production MySQL database schema
 │   ├── package.json              # Backend dependencies and scripts
 │   └── .env.example              # Documented environment variables template
 │
@@ -48,7 +49,7 @@ ENECTRON/
 - **Website Preservation**: Preserves the exact original layout, color palette (Berry Magenta `#9a2579`, Midnight Navy `#0b214f`), typography (`Plus Jakarta Sans`), input focus rings, button gradients, and responsive mobile styling.
 - **Smart Mobile Input**: Enforces exact 10 digits for default `+91 ` (India), blocking extra numbers, symbols, and non-digits at both keystroke and paste levels.
 - **Top Pop-up Notification**: Displays the animated toast from the top with progress countdown bar, pause on hover, close button, and audio chime upon verified database save.
-- **Database-First Reliability**: Enquiries are saved to MySQL with parameterized queries **before** email dispatch. If email delivery fails, the enquiry is never lost (`email_status = 'FAILED'`), and can be retried at any time.
+- **Database-First Reliability**: Enquiries are saved to MongoDB with validated schemas **before** email dispatch. If email delivery fails, the enquiry is never lost (`email_status = 'FAILED'`), and can be retried at any time.
 - **Transactional SMTP Email**: Sends detailed branded HTML notification to the website owner, an optional monitoring copy to the site builder, and an acknowledgement email to the customer.
 - **Production Security**:
   - Helmet for HTTP security headers
@@ -65,19 +66,32 @@ ENECTRON/
 
 ### 1. Prerequisites
 - **Node.js** (v18, v20, v22, or v24)
-- **MySQL** (Local instance or free cloud database like Aiven, TiDB Cloud, Clever Cloud)
+- **MongoDB** (Already running locally on port 27017, or free cloud MongoDB Atlas)
 - **SMTP Account** (e.g. Gmail with App Password, Brevo, SendGrid, Outlook)
 
 ### 2. Configure Backend Environment
-1. Navigate to the `backend/` folder:
-   ```bash
-   cd backend
+1. In `backend/.env`, your local MongoDB is already configured with zero password required:
+   ```ini
+   PORT=5000
+   NODE_ENV=development
+   FRONTEND_URL=http://localhost:3000,http://127.0.0.1:5500,http://localhost:5000
+
+   # MongoDB (Zero configuration locally!)
+   MONGODB_URI=mongodb://127.0.0.1:27017/enectron_db
+
+   # SMTP
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=your_email@gmail.com
+   SMTP_PASS=your_16_letter_app_password
+   SMTP_FROM="ENECTRON Enquiries" <your_email@gmail.com>
+
+   # Recipients
+   OWNER_EMAIL=owner@yourdomain.com
+   BUILDER_EMAIL=builder@yourdomain.com
+   SEND_CUSTOMER_ACK=true
    ```
-2. Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-3. Open `.env` and fill in your MySQL and SMTP credentials:
    ```ini
    PORT=5000
    NODE_ENV=development

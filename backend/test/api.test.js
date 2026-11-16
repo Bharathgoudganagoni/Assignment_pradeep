@@ -7,12 +7,14 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 const app = require('../src/app');
+const { initDatabase, closeDatabase } = require('../src/config/database');
 const { generateOwnerNotificationHtml, generateCustomerAckHtml } = require('../src/services/emailService');
 
 let server = null;
 let baseUrl = '';
 
 test.before(async () => {
+  await initDatabase();
   // Start test server on random available port
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', () => {
@@ -27,6 +29,7 @@ test.after(async () => {
   if (server) {
     await new Promise((resolve) => server.close(resolve));
   }
+  await closeDatabase();
 });
 
 // Helper for making HTTP JSON requests in tests

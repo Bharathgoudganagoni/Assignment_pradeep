@@ -5,7 +5,7 @@
 
 services:
   # ----------------------------------------------------------------------------
-  # 1. Backend Web Service (Node.js / Express / MySQL / Nodemailer)
+  # 1. Backend Web Service (Node.js / Express / MongoDB / Nodemailer)
   # ----------------------------------------------------------------------------
   - type: web
     name: enectron-backend
@@ -21,21 +21,11 @@ services:
       - key: PORT
         value: 10000
       - key: FRONTEND_URL
-        sync: false # Set to your deployed frontend URL (e.g., https://enectron-frontend.onrender.com)
+        sync: false # Set to your deployed frontend URL (e.g. https://enectron-frontend.onrender.com)
       
-      # Database Connection (External Managed MySQL e.g. Aiven, TiDB Cloud, Clever Cloud)
-      - key: DB_HOST
-        sync: false
-      - key: DB_PORT
-        value: 3306
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_NAME
-        value: enectron_db
-      - key: DB_SSL
-        value: "true"
+      # Database Connection (MongoDB Atlas free cluster URI)
+      - key: MONGODB_URI
+        sync: false # e.g. mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/enectron_db?retryWrites=true&w=majority
 
       # Nodemailer SMTP Configuration
       - key: SMTP_HOST
