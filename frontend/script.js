@@ -1,17 +1,30 @@
 /**
  * =========================================================================
- *  ENECTRON "ENQUIRE NOW" FORM - EMAILJS & INTERACTION LOGIC
+ *  ENECTRON "ENQUIRE NOW" FORM - FULL-STACK BACKEND API CLIENT
  * =========================================================================
+ * 
+ *  Preserves 100% of the existing website design, animations, phone formatting,
+ *  and top pop-up notification toast while connecting seamlessly to the
+ *  Node.js / Express backend API (POST /api/enquiries).
  */
 
 // =========================================================================
-// 📧 EMAILJS CREDENTIALS
+// 🌐 BACKEND API URL RESOLVER
 // =========================================================================
-const EMAILJS_CONFIG = {
-  SERVICE_ID: "service_wx37etm",
-  TEMPLATE_ID: "template_uohzi5v",
-  PUBLIC_KEY: "1lTzxmddJ_9rdgyxN"
-};
+function getApiBaseUrl() {
+  // 1. Check if configured in config.js or window object
+  if (typeof window.ENV_API_URL === 'string' && window.ENV_API_URL.trim() !== '') {
+    return window.ENV_API_URL.trim().replace(/\/+$/, '');
+  }
+
+  // 2. Default to localhost backend if running locally in development
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:5000';
+  }
+
+  // 3. Otherwise relative URL (for same-origin or reverse proxy on Render)
+  return '';
+}
 
 // =========================================================================
 // 🔔 PROFESSIONAL TOP POP-UP NOTIFICATION (TOAST)
@@ -58,7 +71,6 @@ class TopNotificationManager {
   }
 
   show({ title, message, type = "success", duration = 5000 }) {
-    // Clear any existing timers
     if (this.dismissTimeout) clearTimeout(this.dismissTimeout);
     if (this.progressInterval) clearInterval(this.progressInterval);
 
@@ -130,7 +142,6 @@ class TopNotificationManager {
       if (type === "success") {
         const now = ctx.currentTime;
         const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
 
         osc1.type = "sine";
@@ -164,7 +175,7 @@ class TopNotificationManager {
         osc.stop(now + 0.3);
       }
     } catch (e) {
-      // Audio autoplay may be prevented before user gesture; gracefully ignore
+      // Audio autoplay restrictions; ignore gracefully
     }
   }
 }
@@ -194,22 +205,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const mobileError = document.getElementById("mobileNumberError");
   const emailError = document.getElementById("userEmailError");
 
-  // Initialize EmailJS immediately
-  if (window.emailjs && EMAILJS_CONFIG.PUBLIC_KEY) {
-    try {
-      window.emailjs.init({ publicKey: EMAILJS_CONFIG.PUBLIC_KEY });
-    } catch (err) {
-      console.error("EmailJS initialization error:", err);
-    }
-  }
-
   // =========================================================================
   // 📱 SMART MOBILE NUMBER FORMATTING & STRICT DIGIT LIMITS
   // =========================================================================
   const DEFAULT_COUNTRY_CODE = "+91";
   const DEFAULT_MAX_DIGITS = 10; // Exactly 10 digits for +91 (India)
 
-  // Determine active country code and max allowed digits
   function getCountryDetails(val) {
     if (val.startsWith("+1")) return { code: "+1", maxDigits: 10 };
     if (val.startsWith("+44")) return { code: "+44", maxDigits: 10 };
@@ -221,7 +222,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return { code: DEFAULT_COUNTRY_CODE, maxDigits: DEFAULT_MAX_DIGITS };
   }
 
-  // Extract subscriber digits (excluding country code)
   function extractSubscriberDigits(rawVal) {
     const { code, maxDigits } = getCountryDetails(rawVal);
     let afterCode = "";
@@ -240,30 +240,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Block extra digits at the keyboard level
   mobileInput.addEventListener("keydown", (e) => {
-    // Allow navigation, delete, backspace, tab, enter, copy/paste shortcuts
     const navKeys = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Enter", "Home", "End"];
     if (navKeys.includes(e.key) || e.ctrlKey || e.metaKey) {
       return;
     }
 
-    // If typing a digit, check if maximum subscriber digits are already reached
     if (/^\d$/.test(e.key)) {
       const { digits, maxDigits } = extractSubscriberDigits(mobileInput.value);
-      // Check if user has selected text to replace
       const hasSelection = mobileInput.selectionStart !== mobileInput.selectionEnd;
       if (digits.length >= maxDigits && !hasSelection) {
-        e.preventDefault(); // STRICTLY BLOCK extra number!
+        e.preventDefault(); // Strictly block extra digit
       }
     } else if (!/^[0-9+ ]$/.test(e.key)) {
-      e.preventDefault(); // STRICTLY BLOCK non-numeric characters!
+      e.preventDefault(); // Strictly block non-numeric characters
     }
   });
 
-  // Format on input: maintains +91 prefix and spaces (e.g. +91 98765 43210)
+  // Format on input
   mobileInput.addEventListener("input", () => {
-    let raw = mobileInput.value;
-    
-    // If field is cleared, reset cleanly
+    const raw = mobileInput.value;
     if (!raw.trim()) {
       mobileInput.value = "";
       return;
@@ -271,7 +266,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const { code, digits, maxDigits } = extractSubscriberDigits(raw);
 
-    // Format subscriber digits into chunks (e.g., 5 + 5 for 10 digits)
     if (digits.length > 5 && maxDigits === 10) {
       mobileInput.value = `${code} ${digits.slice(0, 5)} ${digits.slice(5)}`;
     } else if (digits.length > 0) {
@@ -280,20 +274,17 @@ document.addEventListener("DOMContentLoaded", () => {
       mobileInput.value = `${code} `;
     }
 
-    // Real-time validation
     if (mobileInput.classList.contains("input-invalid")) {
       validateMobile();
     }
   });
 
-  // On focus: auto-populate +91 default if field is empty
   mobileInput.addEventListener("focus", () => {
     if (!mobileInput.value.trim()) {
       mobileInput.value = `${DEFAULT_COUNTRY_CODE} `;
     }
   });
 
-  // On blur: if user only left "+91 " with no digits, clear it back to placeholder
   mobileInput.addEventListener("blur", () => {
     const { digits } = extractSubscriberDigits(mobileInput.value);
     if (!digits) {
@@ -364,7 +355,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return true;
   }
 
-  // Clear errors on real-time typing
   nameInput.addEventListener("input", () => {
     if (nameInput.classList.contains("input-invalid")) validateName();
   });
@@ -374,12 +364,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // =========================================================================
-  // 🚀 SUBMIT HANDLER (EMAILJS)
+  // 🚀 SUBMIT HANDLER (CONNECTS TO BACKEND POST /api/enquiries)
   // =========================================================================
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    // Validate required fields
+    // 1. Client-side field validations
     const isNameValid = validateName();
     const isMobileValid = validateMobile();
     const isEmailValid = validateEmail();
@@ -398,77 +388,63 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // UI Loading State
+    // 2. Prevent multiple simultaneous clicks & set loading UI state
     setLoadingState(true);
 
     const { code, digits } = extractSubscriberDigits(mobileInput.value);
     const formattedPhone = `${code} ${digits}`;
 
-    // Prepare complete template parameters (with aliases for any EmailJS template configuration)
-    const formData = {
-      // Name variables
-      user_name: nameInput.value.trim(),
+    // Payload matching backend API schema
+    const payload = {
       name: nameInput.value.trim(),
-      from_name: nameInput.value.trim(),
-
-      // Mobile / Phone variables
       mobile_number: formattedPhone,
-      phone: formattedPhone,
-      contact_number: formattedPhone,
-
-      // Email variables
-      user_email: emailInput.value.trim(),
       email: emailInput.value.trim(),
-      reply_to: emailInput.value.trim(),
-      from_email: emailInput.value.trim(),
-
-      // Company variables
-      company_name: companyInput.value.trim() || "Not specified",
-      company: companyInput.value.trim() || "Not specified",
-      organisation: companyInput.value.trim() || "Not specified",
-
-      // Application / Use Case variables
-      application: applicationSelect.value || "Not selected",
-      use_case: applicationSelect.value || "Not selected",
-      application_use_case: applicationSelect.value || "Not selected",
-
-      // Requirement / Message variables
-      requirement: requirementTextarea.value.trim() || "No specific requirement provided",
-      message: requirementTextarea.value.trim() || "No specific requirement provided",
-
-      // Timestamps
-      submission_time: new Date().toLocaleString(),
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString()
+      company_name: companyInput.value.trim() || null,
+      application_use_case: applicationSelect.value || null,
+      requirement: requirementTextarea.value.trim() || null
     };
 
+    const targetUrl = `${getApiBaseUrl()}/api/enquiries`;
+
     try {
-      if (!window.emailjs) {
-        throw new Error("EmailJS SDK not loaded. Please check your internet connection.");
+      // 3. Send to Node.js backend using fetch API
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        // Extract server error message or validation errors
+        let errorMsg = "Unable to process your enquiry. Please try again.";
+        if (data && data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          errorMsg = data.errors.join(" ");
+        } else if (data && data.message) {
+          errorMsg = data.message;
+        } else if (response.status === 429) {
+          errorMsg = "Too many requests. Please wait a few moments before trying again.";
+        }
+
+        throw new Error(errorMsg);
       }
 
-      // Initialize with public key
-      window.emailjs.init({ publicKey: EMAILJS_CONFIG.PUBLIC_KEY });
-
-      // Send enquiry email
-      const response = await window.emailjs.send(
-        EMAILJS_CONFIG.SERVICE_ID,
-        EMAILJS_CONFIG.TEMPLATE_ID,
-        formData
-      );
-
-      console.log("EmailJS Sent Successfully:", response);
+      // 4. Success Response Handling
       setLoadingState(false);
 
-      // Show professional top pop-up notification
+      const customerName = payload.name;
       toastManager.show({
         title: "Enquiry Submitted Successfully!",
-        message: `Thank you, ${formData.user_name}! The ENECTRON team has received your enquiry and will connect with you shortly.`,
+        message: `Thank you, ${customerName}! Your enquiry has been received and saved. Our team will connect with you shortly.`,
         type: "success",
         duration: 5500
       });
 
-      // Reset form fields
+      // 5. Clean form reset
       form.reset();
       nameInput.classList.remove("input-invalid");
       mobileInput.classList.remove("input-invalid");
@@ -478,18 +454,19 @@ document.addEventListener("DOMContentLoaded", () => {
       emailError.textContent = "";
 
     } catch (error) {
-      console.error("Submission Error:", error);
+      console.error("[Submission Error]", error);
       setLoadingState(false);
 
-      const errorMsg = error && (error.text || error.message) 
-        ? (error.text || error.message) 
-        : "Failed to send email. Please check your internet connection.";
+      let displayMsg = error.message;
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        displayMsg = "Cannot connect to backend server. Please verify your internet connection or check that the server is online.";
+      }
 
       toastManager.show({
-        title: "Submission Error",
-        message: `Could not send enquiry: ${errorMsg}`,
+        title: "Submission Failed",
+        message: displayMsg,
         type: "error",
-        duration: 6000
+        duration: 6500
       });
     }
   });

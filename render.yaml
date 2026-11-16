@@ -1,0 +1,70 @@
+# ==============================================================================
+# Render Blueprint Specification for ENECTRON Full-Stack Enquiry System
+# Docs: https://render.com/docs/blueprint-spec
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Backend Web Service (Node.js / Express / MySQL / Nodemailer)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: enectron-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: FRONTEND_URL
+        sync: false # Set to your deployed frontend URL (e.g., https://enectron-frontend.onrender.com)
+      
+      # Database Connection (External Managed MySQL e.g. Aiven, TiDB Cloud, Clever Cloud)
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 3306
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: enectron_db
+      - key: DB_SSL
+        value: "true"
+
+      # Nodemailer SMTP Configuration
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: "ENECTRON Enquiries <no-reply@enectron.com>"
+      - key: OWNER_EMAIL
+        sync: false
+      - key: BUILDER_EMAIL
+        sync: false
+      - key: SEND_CUSTOMER_ACK
+        value: "true"
+
+  # ----------------------------------------------------------------------------
+  # 2. Frontend Static Site (HTML / CSS / JavaScript)
+  # ----------------------------------------------------------------------------
+  - type: static
+    name: enectron-frontend
+    rootDir: frontend
+    publishDir: .
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
