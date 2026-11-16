@@ -1,0 +1,570 @@
+/* ==========================================================================
+   ENECTRON "ENQUIRE NOW" FORM - PIXEL-PERFECT STYLESHEET
+   100% faithful replication of typography, colors, gradients & components.
+   ========================================================================== */
+
+:root {
+  /* Brand Theme Colors */
+  --accent-magenta: #9a2579;
+  --accent-magenta-hover: #ad2888;
+  --navy-dark: #0b214f;
+  --title-navy: #0d2242;
+  --subtitle-gray: #64748b;
+  
+  /* Button Gradient Signature */
+  --btn-gradient: linear-gradient(90deg, #9b2386 0%, #6b2377 38%, #2d2460 72%, #0b214f 100%);
+  --btn-gradient-hover: linear-gradient(90deg, #aa2993 0%, #782986 38%, #362c73 72%, #0e2a64 100%);
+
+  /* Form & Control Colors */
+  --label-color: #1e293b;
+  --text-main: #0f172a;
+  --placeholder-color: #8f9bb0;
+  --border-default: #d5dbe2;
+  --border-hover: #cbd5e1;
+  --border-focus: #9a2579;
+  --focus-ring: rgba(154, 37, 121, 0.13);
+  
+  /* Backgrounds & Elevation */
+  --bg-page: linear-gradient(135deg, #e8f1fa 0%, #dfebf7 50%, #d5e4f3 100%);
+  --card-bg: #ffffff;
+  --card-shadow: 0 12px 42px -10px rgba(13, 34, 66, 0.08), 0 2px 8px rgba(13, 34, 66, 0.02);
+  --card-border-radius: 28px;
+  
+  /* Radii & Sizes */
+  --input-radius: 12px;
+  --input-height: 48px;
+  --button-radius: 28px;
+  --button-height: 54px;
+  --textarea-height: 84px;
+  
+  /* Footer Disclaimer */
+  --disclaimer-color: #7f8e9f;
+
+  /* Notifications */
+  --success-color: #10b981;
+  --error-color: #ef4444;
+  --info-color: #3b82f6;
+}
+
+/* Base Reset & Typography */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-page);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: var(--text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding: 24px 16px;
+}
+
+/* ================= PAGE CONTAINER ================= */
+.page-wrapper {
+  width: 100%;
+  max-width: 720px;
+  margin: auto;
+}
+
+/* ================= ENQUIRE NOW CARD ================= */
+.card-container {
+  background: var(--card-bg);
+  border-radius: var(--card-border-radius);
+  box-shadow: var(--card-shadow);
+  padding: 40px 42px 34px 42px;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+/* ================= HEADER SECTION ================= */
+.form-header {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.header-accent-bar {
+  width: 5px;
+  min-height: 56px;
+  background-color: var(--accent-magenta);
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.header-text-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.header-title {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--title-navy);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.header-subtitle {
+  font-size: 14.5px;
+  color: var(--subtitle-gray);
+  font-weight: 400;
+  margin-top: 5px;
+  letter-spacing: -0.01em;
+}
+
+/* ================= FORM LAYOUT & CONTROLS ================= */
+.enquiry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.form-row {
+  width: 100%;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--label-color);
+  margin-bottom: 7px;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.required-star {
+  color: var(--label-color);
+  font-weight: 600;
+}
+
+/* Input Fields */
+.input-wrapper, 
+.select-wrapper, 
+.textarea-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.form-control {
+  width: 100%;
+  height: var(--input-height);
+  padding: 0 18px;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--text-main);
+  background-color: #ffffff;
+  border: 1.5px solid var(--border-default);
+  border-radius: var(--input-radius);
+  outline: none;
+  transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form-control::placeholder {
+  color: var(--placeholder-color);
+  font-weight: 400;
+  opacity: 1;
+}
+
+.form-control:hover:not(:focus):not([disabled]) {
+  border-color: var(--border-hover);
+}
+
+.form-control:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3.5px var(--focus-ring);
+}
+
+.form-control.input-invalid {
+  border-color: #ef4444 !important;
+  background-color: #fffbfa;
+}
+
+.field-error {
+  font-size: 11.5px;
+  color: #dc2626;
+  margin-top: 4px;
+  min-height: 14px;
+  line-height: 1.2;
+}
+
+/* Select Dropdown */
+.select-wrapper {
+  position: relative;
+}
+
+.select-control {
+  cursor: pointer;
+  padding-right: 44px;
+  line-height: var(--input-height);
+}
+
+.select-control:invalid,
+.select-control option[value=""][disabled] {
+  color: var(--placeholder-color);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.select-arrow svg {
+  width: 16px;
+  height: 16px;
+  stroke: #1e293b;
+  stroke-width: 2.2;
+}
+
+/* Textarea Field */
+.textarea-control {
+  height: var(--textarea-height);
+  min-height: 76px;
+  max-height: 180px;
+  resize: vertical;
+  line-height: 1.45;
+  padding: 13px 18px;
+}
+
+/* ================= SUBMIT BUTTON ================= */
+.form-submit-row {
+  margin-top: 4px;
+}
+
+.submit-button {
+  width: 100%;
+  height: var(--button-height);
+  border: none;
+  border-radius: var(--button-radius);
+  background: var(--btn-gradient);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 6px 20px -4px rgba(155, 35, 134, 0.35), 0 4px 12px -2px rgba(11, 33, 79, 0.25);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.submit-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0) 100%);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: var(--btn-gradient-hover);
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 25px -4px rgba(155, 35, 134, 0.45), 0 6px 16px -2px rgba(11, 33, 79, 0.35);
+}
+
+.submit-button:hover::before {
+  transform: translateX(100%);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: translateY(0.5px);
+  box-shadow: 0 4px 12px -2px rgba(155, 35, 134, 0.3);
+}
+
+.submit-button:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-arrow {
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.submit-button:hover:not(:disabled) .btn-arrow {
+  transform: translateX(4px);
+}
+
+/* Spinner */
+.btn-spinner {
+  width: 20px;
+  height: 20px;
+  animation: spin 0.8s linear infinite;
+}
+
+.btn-spinner svg {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ================= DISCLAIMER FOOTER ================= */
+.form-disclaimer {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--disclaimer-color);
+  line-height: 1.45;
+  margin-top: 6px;
+}
+
+/* ================= TOP NOTIFICATION POP-UP (TOAST) ================= */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 9999;
+  padding: 0 16px;
+}
+
+.toast-popup {
+  pointer-events: auto;
+  position: relative;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 48px -10px rgba(11, 33, 79, 0.18), 
+              0 8px 18px -4px rgba(0, 0, 0, 0.06), 
+              0 0 0 1px rgba(226, 232, 240, 0.9);
+  width: 100%;
+  max-width: 540px;
+  padding: 16px 20px 18px 20px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: flex-start;
+  gap: 14px;
+  overflow: hidden;
+  
+  /* Initial hidden state */
+  opacity: 0;
+  transform: translateY(-130%) scale(0.96);
+  visibility: hidden;
+  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1), 
+              opacity 0.35s ease, 
+              visibility 0.42s ease;
+}
+
+.toast-popup.toast-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+}
+
+/* Accent Indicator Bar on Left of Toast */
+.toast-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--accent-magenta);
+}
+
+.toast-popup.toast-success .toast-indicator {
+  background: var(--success-color);
+}
+
+.toast-popup.toast-error .toast-indicator {
+  background: var(--error-color);
+}
+
+.toast-popup.toast-info .toast-indicator {
+  background: var(--info-color);
+}
+
+/* Toast Icon */
+.toast-icon-wrapper {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.toast-popup.toast-success .toast-icon-wrapper {
+  background: #ecfdf5;
+  color: var(--success-color);
+}
+
+.toast-popup.toast-error .toast-icon-wrapper {
+  background: #fef2f2;
+  color: var(--error-color);
+}
+
+.toast-popup.toast-info .toast-icon-wrapper {
+  background: #eff6ff;
+  color: var(--info-color);
+}
+
+.toast-icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* Toast Content */
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.toast-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.toast-message {
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+/* Toast Close Button */
+.toast-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  margin-top: -2px;
+}
+
+.toast-close-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.toast-close-btn:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+
+/* Progress Countdown Bar */
+.toast-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--success-color);
+  width: 100%;
+  transform-origin: left;
+  transition: width linear;
+}
+
+.toast-popup.toast-error .toast-progress-bar {
+  background: var(--error-color);
+}
+
+.toast-popup.toast-info .toast-progress-bar {
+  background: var(--info-color);
+}
+
+/* ================= UTILITY CLASSES ================= */
+.hidden {
+  display: none !important;
+}
+
+/* ================= RESPONSIVE DESIGN ================= */
+@media (max-width: 680px) {
+  body {
+    padding: 16px 12px;
+  }
+
+  .card-container {
+    padding: 30px 20px 26px 20px;
+    border-radius: 22px;
+  }
+
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .header-title {
+    font-size: 26px;
+  }
+
+  .header-subtitle {
+    font-size: 13.5px;
+  }
+
+  .header-accent-bar {
+    min-height: 48px;
+    width: 4.5px;
+  }
+
+  .submit-button {
+    height: 50px;
+    font-size: 15px;
+  }
+
+  .toast-popup {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+}
