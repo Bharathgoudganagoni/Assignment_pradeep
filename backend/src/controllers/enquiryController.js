@@ -122,9 +122,23 @@ async function createEnquiry(req, res, next) {
 
     if (!emailResult.success) {
       console.error('[Enquiry Error] Failed to send email via SMTP:', emailResult.error);
+      let userFriendlyMsg = 'Unable to deliver enquiry email via SMTP. Please try again later or contact us directly.';
+      
+      if (emailResult.error) {
+        if (emailResult.error.includes('not configured')) {
+          userFriendlyMsg = 'SMTP credentials are not configured in the server environment variables. Please add SMTP_USER and SMTP_PASS in the Render dashboard.';
+        } else if (emailResult.error.includes('Username and Password not accepted') || emailResult.error.includes('Invalid login') || emailResult.error.includes('EAUTH')) {
+          userFriendlyMsg = 'Gmail SMTP authentication failed. Please check your Gmail address and 16-character App Password in Render environment variables.';
+        } else if (emailResult.error.includes('ETIMEDOUT') || emailResult.error.includes('ECONNREFUSED') || emailResult.error.includes('ENOTFOUND')) {
+          userFriendlyMsg = `SMTP connection timed out. (Details: ${emailResult.error})`;
+        } else {
+          userFriendlyMsg = `Email delivery failed: ${emailResult.error}`;
+        }
+      }
+
       return res.status(500).json({
         success: false,
-        message: 'Unable to deliver enquiry email via SMTP. Please try again later or contact us directly.'
+        message: userFriendlyMsg
       });
     }
 
