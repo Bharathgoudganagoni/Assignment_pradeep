@@ -16,6 +16,9 @@ function getSmtpConfig() {
   const isSecure = process.env.SMTP_SECURE === 'true' || port === 465;
 
   return {
+    pool: true,              // Reuse connections to send emails much faster
+    maxConnections: 3,       // Up to 3 simultaneous SMTP connections
+    maxMessages: 100,        // Up to 100 messages per connection
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: port,
     secure: isSecure,
@@ -23,6 +26,9 @@ function getSmtpConfig() {
       user: process.env.SMTP_USER || '',
       pass: process.env.SMTP_PASS || ''
     },
+    connectionTimeout: 10000, // 10s connection timeout
+    greetingTimeout: 10000,   // 10s greeting timeout
+    socketTimeout: 15000,     // 15s socket timeout
     tls: {
       rejectUnauthorized: process.env.NODE_ENV === 'production'
     }

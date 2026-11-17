@@ -244,21 +244,18 @@ Submission Time: ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })
     const info = await transporter.sendMail(mailOptions);
     console.log(`[EmailService] Notification successfully delivered to ${receiverEmail}. Message ID: ${info.messageId}`);
 
-    // Optional customer acknowledgement email
+    // 2. Optional customer acknowledgement email (dispatched in background without delaying user response)
     if (process.env.SEND_CUSTOMER_ACK === 'true' && enquiry.user_email) {
-      try {
-        const customerMailOptions = {
-          from: fromEmail,
-          to: enquiry.user_email,
-          subject: 'We have received your enquiry – ENECTRON',
-          text: `Dear ${enquiry.user_name},\n\nThank you for reaching out to ENECTRON. We have received your enquiry regarding ${enquiry.application || 'our solutions'} and will contact you shortly.\n\nBest regards,\nENECTRON Team`,
-          html: generateCustomerAckHtml(enquiry)
-        };
-        await transporter.sendMail(customerMailOptions);
-        console.log(`[EmailService] Customer acknowledgement sent to ${enquiry.user_email}`);
-      } catch (ackError) {
-        console.warn(`[EmailService] Could not send customer acknowledgement: ${ackError.message}`);
-      }
+      const customerMailOptions = {
+        from: fromEmail,
+        to: enquiry.user_email,
+        subject: 'We have received your enquiry – ENECTRON',
+        text: `Dear ${enquiry.user_name},\n\nThank you for reaching out to ENECTRON. We have received your enquiry regarding ${enquiry.application || 'our solutions'} and will contact you shortly.\n\nBest regards,\nENECTRON Team`,
+        html: generateCustomerAckHtml(enquiry)
+      };
+      transporter.sendMail(customerMailOptions)
+        .then(() => console.log(`[EmailService] Customer acknowledgement sent to ${enquiry.user_email}`))
+        .catch((ackError) => console.warn(`[EmailService] Customer acknowledgement warning: ${ackError.message}`));
     }
 
     return {

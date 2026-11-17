@@ -413,6 +413,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const targetUrl = getApiEndpoint();
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+    const progressTimer = setTimeout(() => {
+      if (submitBtn.disabled) {
+        btnText.textContent = "Connecting to mail server...";
+      }
+    }, 4000);
+
     try {
       // 3. Send to Node.js backend using fetch API
       const response = await fetch(targetUrl, {
@@ -421,8 +430,12 @@ document.addEventListener("DOMContentLoaded", () => {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+      clearTimeout(progressTimer);
 
       const data = await response.json().catch(() => null);
 
@@ -460,11 +473,15 @@ document.addEventListener("DOMContentLoaded", () => {
       emailError.textContent = "";
 
     } catch (error) {
+      clearTimeout(timeoutId);
+      clearTimeout(progressTimer);
       console.error("[Submission Error]", error);
       setLoadingState(false);
 
       let displayMsg = error.message;
-      if (error instanceof TypeError && error.message.includes("fetch")) {
+      if (error.name === "AbortError") {
+        displayMsg = "Request timed out. The server took too long to respond. If hosted on Render, the free server may be waking up from sleep — please try again in a moment.";
+      } else if (error instanceof TypeError && error.message.includes("fetch")) {
         displayMsg = "Cannot connect to backend server. Please verify your internet connection or check that the server is online.";
       }
 
