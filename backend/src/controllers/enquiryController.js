@@ -163,17 +163,19 @@ async function createEnquiry(req, res, next) {
  * GET /api/health
  */
 async function getHealth(req, res) {
+  const isGoogleScriptConfigured = Boolean(process.env.GOOGLE_SCRIPT_URL);
   const isSmtpConfigured = Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
   const receiverEmail = process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL || 'Not configured';
 
   res.status(200).json({
     status: 'healthy',
     service: 'ENECTRON Enquiry Management API',
+    deliveryMode: isGoogleScriptConfigured ? 'GoogleAppsScript_HTTPS' : (isSmtpConfigured ? 'Nodemailer_SMTP' : 'None'),
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
-    smtp: {
-      configured: isSmtpConfigured,
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    email: {
+      provider: isGoogleScriptConfigured ? 'Google Apps Script (HTTPS)' : (isSmtpConfigured ? 'Nodemailer SMTP' : 'Not configured'),
+      configured: isGoogleScriptConfigured || isSmtpConfigured,
       receiverConfigured: receiverEmail !== 'Not configured'
     }
   });

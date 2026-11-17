@@ -1,6 +1,9 @@
 /**
  * Email Service
  * Handles transactional email notifications to fixed RECEIVER_EMAIL and optional customer acknowledgement.
+ * Supports:
+ *  1. Google Apps Script HTTPS Webhook (Port 443 - Recommended for Render Free tier where SMTP is blocked)
+ *  2. Nodemailer SMTP (Ports 587/465 - For local development or unblocked servers)
  */
 
 const { getTransporter, getFromAddress } = require('../config/smtp');
@@ -187,20 +190,142 @@ function generateCustomerAckHtml(enquiry) {
 }
 
 /**
- * Send enquiry notification to the fixed RECEIVER_EMAIL
- * @param {Object} enquiry - Sanitized enquiry details
- * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
+ * Dispatch email via Google Apps Script HTTPS Webhook (Port 443)
+ * Bypasses cloud host SMTP port blocking (Render Free Tier compatible)
  */
-async function sendEnquiryEmail(enquiry) {
-  const receiverEmail = process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL;
-  const builderEmail = process.env.BUILDER_EMAIL;
-  const fromEmail = getFromAddress();
+async function sendViaGoogleAppsScript({ to, cc, replyTo, subject, htmlBody, textBody }) {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  const scriptSecret = process.env.GOOGLE_SCRIPT_SECRET || '';
 
+  if (!scriptUrl) {
+    return { success: false, error: 'GOOGLE_SCRIPT_URL is not defined in environment.' };
+  }
+
+  const payload = {
+    secret: scriptSecret,
+    to,
+    cc: cc || '',
+    replyTo: replyTo || to,
+    subject,
+    htmlBody,
+    textBody
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout
+
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    const responseText = await response.text();
+    let result = null;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { success: response.ok, raw: responseText };
+    }
+
+    if (result && result.success) {
+      console.log(`[EmailService] Notification successfully delivered via Google Apps Script (HTTPS) to ${to}`);
+      return {
+        success: true,
+        provider: 'GoogleAppsScript'
+      };
+    } else {
+      const errorMsg = result && result.error ? result.error : `HTTP ${response.status}: ${responseText.slice(0, 200)}`;
+      console.error(`[EmailService Error] Google Apps Script failed: ${errorMsg}`);
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+  } catch (err) {
+    console.error(`[EmailService Error] Google Apps Script request failed: ${err.message}`);
+    return {
+      success: false,
+      error: `Google Apps Script request error: ${err.message}`
+    };
+  }
+}
+
+/**
+ * Dispatch email via Nodemailer Authenticated SMTP (Ports 587/465)
+ */
+async function sendViaSmtp({ to, cc, replyTo, subject, htmlBody, textBody, fromEmail, enquiry }) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     const errorMsg = 'SMTP credentials not configured in environment variables.';
     console.warn(`[EmailService] ${errorMsg}`);
     return { success: false, error: errorMsg };
   }
+
+  const transporter = getTransporter();
+
+  const mailOptions = {
+    from: fromEmail,
+    to,
+    replyTo,
+    subject,
+    text: textBody,
+    html: htmlBody
+  };
+
+  if (cc && cc.trim() !== '') {
+    mailOptions.cc = cc.trim();
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[EmailService] Notification successfully delivered via SMTP to ${to}. Message ID: ${info.messageId}`);
+
+    // Optional customer acknowledgement email (dispatched in background)
+    if (process.env.SEND_CUSTOMER_ACK === 'true' && enquiry && enquiry.user_email) {
+      const customerMailOptions = {
+        from: fromEmail,
+        to: enquiry.user_email,
+        subject: 'We have received your enquiry – ENECTRON',
+        text: `Dear ${enquiry.user_name},\n\nThank you for reaching out to ENECTRON. We have received your enquiry regarding ${enquiry.application || 'our solutions'} and will contact you shortly.\n\nBest regards,\nENECTRON Team`,
+        html: generateCustomerAckHtml(enquiry)
+      };
+      transporter.sendMail(customerMailOptions)
+        .then(() => console.log(`[EmailService] Customer acknowledgement sent to ${enquiry.user_email}`))
+        .catch((ackError) => console.warn(`[EmailService] Customer acknowledgement warning: ${ackError.message}`));
+    }
+
+    return {
+      success: true,
+      messageId: info.messageId,
+      provider: 'Nodemailer_SMTP'
+    };
+  } catch (error) {
+    console.error(`[EmailService Error] Failed to send email via SMTP: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Send enquiry notification to the fixed RECEIVER_EMAIL
+ * Automatically selects Google Apps Script HTTPS relay (if GOOGLE_SCRIPT_URL configured)
+ * or Nodemailer SMTP fallback.
+ * @param {Object} enquiry - Sanitized enquiry details
+ * @returns {Promise<{success: boolean, messageId?: string, error?: string, provider?: string}>}
+ */
+async function sendEnquiryEmail(enquiry) {
+  const receiverEmail = process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL;
+  const builderEmail = process.env.BUILDER_EMAIL;
+  const fromEmail = getFromAddress();
 
   if (!receiverEmail) {
     const errorMsg = 'RECEIVER_EMAIL (or OWNER_EMAIL) environment variable is not defined.';
@@ -208,9 +333,6 @@ async function sendEnquiryEmail(enquiry) {
     return { success: false, error: errorMsg };
   }
 
-  const transporter = getTransporter();
-
-  // Plain-text fallback
   const plainText = `
 ENECTRON | New Business Enquiry
 ===========================================
@@ -226,53 +348,58 @@ ${enquiry.requirement || 'No specific requirement provided'}
 Submission Time: ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })}
   `.trim();
 
-  // Email to fixed receiver
-  const mailOptions = {
-    from: fromEmail,
-    to: receiverEmail,
-    replyTo: enquiry.user_email,
-    subject: `ENECTRON | New Business Enquiry – ${enquiry.user_name}`,
-    text: plainText,
-    html: generateOwnerNotificationHtml(enquiry)
-  };
+  const htmlBody = generateOwnerNotificationHtml(enquiry);
+  const subject = `ENECTRON | New Business Enquiry – ${enquiry.user_name}`;
 
-  if (builderEmail && builderEmail.trim() !== '') {
-    mailOptions.cc = builderEmail.trim();
-  }
+  // 1. Preferred for Render Free Tier: Google Apps Script HTTPS Webhook (Port 443)
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    const gasResult = await sendViaGoogleAppsScript({
+      to: receiverEmail,
+      cc: builderEmail && builderEmail.trim() !== '' ? builderEmail.trim() : undefined,
+      replyTo: enquiry.user_email,
+      subject,
+      htmlBody,
+      textBody: plainText
+    });
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[EmailService] Notification successfully delivered to ${receiverEmail}. Message ID: ${info.messageId}`);
-
-    // 2. Optional customer acknowledgement email (dispatched in background without delaying user response)
-    if (process.env.SEND_CUSTOMER_ACK === 'true' && enquiry.user_email) {
-      const customerMailOptions = {
-        from: fromEmail,
+    if (gasResult.success && process.env.SEND_CUSTOMER_ACK === 'true' && enquiry.user_email) {
+      // Dispatch customer acknowledgement in background via Google Apps Script
+      sendViaGoogleAppsScript({
         to: enquiry.user_email,
+        replyTo: receiverEmail,
         subject: 'We have received your enquiry – ENECTRON',
-        text: `Dear ${enquiry.user_name},\n\nThank you for reaching out to ENECTRON. We have received your enquiry regarding ${enquiry.application || 'our solutions'} and will contact you shortly.\n\nBest regards,\nENECTRON Team`,
-        html: generateCustomerAckHtml(enquiry)
-      };
-      transporter.sendMail(customerMailOptions)
-        .then(() => console.log(`[EmailService] Customer acknowledgement sent to ${enquiry.user_email}`))
-        .catch((ackError) => console.warn(`[EmailService] Customer acknowledgement warning: ${ackError.message}`));
+        htmlBody: generateCustomerAckHtml(enquiry),
+        textBody: `Dear ${enquiry.user_name},\n\nThank you for reaching out to ENECTRON. We have received your enquiry regarding ${enquiry.application || 'our solutions'} and will contact you shortly.\n\nBest regards,\nENECTRON Team`
+      }).catch(err => console.warn('[EmailService] Customer ack warning:', err.message));
     }
 
-    return {
-      success: true,
-      messageId: info.messageId
-    };
-  } catch (error) {
-    console.error(`[EmailService Error] Failed to send email via SMTP: ${error.message}`);
-    return {
-      success: false,
-      error: error.message
-    };
+    return gasResult;
   }
+
+  // 2. Fallback: Nodemailer SMTP
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return await sendViaSmtp({
+      to: receiverEmail,
+      cc: builderEmail,
+      replyTo: enquiry.user_email,
+      subject,
+      htmlBody,
+      textBody: plainText,
+      fromEmail,
+      enquiry
+    });
+  }
+
+  return {
+    success: false,
+    error: 'No email transport configured. Set GOOGLE_SCRIPT_URL (recommended for Render) or SMTP_USER/SMTP_PASS in environment variables.'
+  };
 }
 
 module.exports = {
   sendEnquiryEmail,
+  sendViaGoogleAppsScript,
+  sendViaSmtp,
   generateOwnerNotificationHtml,
   generateCustomerAckHtml
 };

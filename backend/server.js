@@ -24,8 +24,14 @@ async function startServer() {
   console.log(`[Email] Receiver configured: ${Boolean(process.env.RECEIVER_EMAIL || process.env.OWNER_EMAIL)}`);
   console.log('========================================================');
 
-  // 1. Verify SMTP connection
-  await verifySmtp();
+  // 1. Verify email connectivity
+  if (process.env.GOOGLE_SCRIPT_URL) {
+    console.log('✅ [Email Mode] Google Apps Script HTTPS Webhook (Port 443 - Render Free compatible)');
+    console.log('   Endpoint URL configured: YES');
+  } else {
+    console.log('ℹ️ [Email Mode] Nodemailer SMTP (Ports 587/465)');
+    await verifySmtp();
+  }
 
   // 2. Start Express HTTP Server
   server = app.listen(PORT, '0.0.0.0', () => {

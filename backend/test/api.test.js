@@ -62,7 +62,7 @@ test('1. Health Check Endpoint - GET /api/health returns 200 and healthy status'
   assert.strictEqual(res.status, 200);
   assert.strictEqual(res.data.status, 'healthy');
   assert.strictEqual(res.data.service, 'ENECTRON Enquiry Management API');
-  assert.ok('smtp' in res.data);
+  assert.ok('email' in res.data || 'deliveryMode' in res.data);
 });
 
 test('2. Root Endpoint - GET / serves existing frontend index.html', async () => {
