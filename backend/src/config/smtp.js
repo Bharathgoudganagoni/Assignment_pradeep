@@ -1,7 +1,13 @@
 /**
  * Nodemailer SMTP Configuration
  * Configures authenticated SMTP transport using environment variables.
+ * Automatically resolves IPv4 preference and Gmail-specific transport settings.
  */
+
+const dns = require('node:dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first'); // Force IPv4 to prevent IPv6 connection timeouts on cloud hosts like Render
+}
 
 const nodemailer = require('nodemailer');
 const path = require('path');
@@ -12,34 +18,50 @@ require('dotenv').config();
 let transporter = null;
 
 function getSmtpConfig() {
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT, 10) || 587;
-  
-  // Auto-correct port/security mismatch:
-  // - Port 465 requires secure: true (Direct SSL)
-  // - Port 587 requires secure: false (STARTTLS)
-  let isSecure = false;
-  if (port === 465) {
-    isSecure = true;
-  } else if (port === 587) {
-    isSecure = false;
-  } else {
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
+
+  const isGmail = host === 'smtp.gmail.com' || (user && user.endsWith('@gmail.com'));
+
+  // If using Gmail, using Nodemailer's native 'gmail' service avoids port/security conflicts
+  if (isGmail) {
+    return {
+      service: 'gmail',
+      auth: {
+        user,
+        pass
+      },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      connectionTimeout: 15000, // 15s timeout
+      greetingTimeout: 15000,
+      socketTimeout: 20000
+    };
+  }
+
+  // Generic custom SMTP
+  let isSecure = port === 465;
+  if (process.env.SMTP_SECURE !== undefined) {
     isSecure = process.env.SMTP_SECURE === 'true';
   }
 
   return {
-    pool: true,              // Reuse connections to send emails much faster
-    maxConnections: 3,       // Up to 3 simultaneous SMTP connections
-    maxMessages: 100,        // Up to 100 messages per connection
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: port,
+    host,
+    port,
     secure: isSecure,
     auth: {
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || ''
+      user,
+      pass
     },
-    connectionTimeout: 10000, // 10s connection timeout
-    greetingTimeout: 10000,   // 10s greeting timeout
-    socketTimeout: 15000,     // 15s socket timeout
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     tls: {
       rejectUnauthorized: process.env.NODE_ENV === 'production'
     }
@@ -66,11 +88,11 @@ async function verifySmtp() {
   const mailTransporter = getTransporter();
   try {
     await mailTransporter.verify();
-    console.log(`[SMTP] Connected successfully to ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587} as ${process.env.SMTP_USER}`);
+    console.log(`[SMTP] Connected successfully to email service as ${process.env.SMTP_USER}`);
     return true;
   } catch (error) {
     console.error('[SMTP Error] Failed to verify SMTP connection:', error.message);
-    console.error('[SMTP Hint] For Gmail, use an App Password (16 characters) created in Google Account Security.');
+    console.error('[SMTP Hint] Ensure you are using a 16-character Google App Password (not your normal Gmail password).');
     return false;
   }
 }

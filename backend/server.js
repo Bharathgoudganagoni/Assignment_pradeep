@@ -3,6 +3,11 @@
  * Verifies SMTP connectivity and starts Express HTTP server serving both static frontend and API.
  */
 
+const dns = require('node:dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first'); // Force IPv4 to avoid cloud container IPv6 timeouts
+}
+
 const path = require('path');
 const dotenv = require('dotenv');
 
