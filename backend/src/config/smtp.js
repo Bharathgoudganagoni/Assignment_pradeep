@@ -13,7 +13,18 @@ let transporter = null;
 
 function getSmtpConfig() {
   const port = parseInt(process.env.SMTP_PORT, 10) || 587;
-  const isSecure = process.env.SMTP_SECURE === 'true' || port === 465;
+  
+  // Auto-correct port/security mismatch:
+  // - Port 465 requires secure: true (Direct SSL)
+  // - Port 587 requires secure: false (STARTTLS)
+  let isSecure = false;
+  if (port === 465) {
+    isSecure = true;
+  } else if (port === 587) {
+    isSecure = false;
+  } else {
+    isSecure = process.env.SMTP_SECURE === 'true';
+  }
 
   return {
     pool: true,              // Reuse connections to send emails much faster
